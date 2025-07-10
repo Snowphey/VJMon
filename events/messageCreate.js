@@ -9,17 +9,23 @@ module.exports = {
     async execute(message) {
         // Vérifier que le message a un canal (éviter les DMs et autres contextes spéciaux)
         if (!message.channel || !message.channel.id) return;
-        
+
         // Vérifier s'il y a un message principal actif
         const mainMessage = global.mainMessage;
         if (!mainMessage) return;
-        
+
         // Ignorer si le message reçu est le message principal lui-même (éviter la boucle infinie)
         if (message.id === mainMessage.id) return;
-        
+
+        // Ignorer les messages envoyés par le bot qui ont le même contenu que le mainMessage (éviter la boucle)
+        if (
+            message.author.id === message.client.user.id &&
+            message.content === 'Capture du jeu :'
+        ) return;
+
         // Vérifier que le message principal a un canal valide
         if (!mainMessage.channelId) return;
-        
+
         // Vérifier si le message est dans le même canal que le message principal
         if (message.channel.id !== mainMessage.channelId) return;
         
