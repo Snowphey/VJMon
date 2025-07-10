@@ -89,10 +89,17 @@ module.exports = {
                 
                 if (capturePath) {
                     // Récupérer le message principal partagé
-                    const mainMessage = global.mainMessage;
+                    let mainMessage = global.mainMessage;
                     
                     if (mainMessage) {
                         try {
+                            // Vérifier que le message existe encore
+                            try {
+                                await mainMessage.fetch();
+                            } catch (fetchError) {
+                                // Le message n'existe plus : ne rien faire, l'affichage va se rafraîchir automatiquement
+                                return;
+                            }
                             const attachment = new AttachmentBuilder(capturePath);
                             const components = view.createComponents();
                             
