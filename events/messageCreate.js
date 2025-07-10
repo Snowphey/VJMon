@@ -14,6 +14,9 @@ module.exports = {
         const mainMessage = global.mainMessage;
         if (!mainMessage) return;
         
+        // Ignorer si le message reçu est le message principal lui-même (éviter la boucle infinie)
+        if (message.id === mainMessage.id) return;
+        
         // Vérifier que le message principal a un canal valide
         if (!mainMessage.channelId) return;
         
