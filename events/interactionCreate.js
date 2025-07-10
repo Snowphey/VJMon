@@ -82,7 +82,9 @@ module.exports = {
                 await view.handleCommand(interaction, 'right', 3);
                 break;
             case 'btn_capture':
-                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                // Indiquer à Discord que l'interaction est en cours de traitement
+                await interaction.deferUpdate();
+                
                 const capturePath = await view.captureDesmume();
                 
                 if (capturePath) {

@@ -7,9 +7,6 @@ let recreationTimeout = null;
 module.exports = {
     name: Events.MessageCreate,
     async execute(message) {
-        // Ignorer les messages du bot lui-même
-        if (message.author.bot) return;
-        
         // Vérifier que le message a un canal (éviter les DMs et autres contextes spéciaux)
         if (!message.channel || !message.channel.id) return;
         
@@ -40,8 +37,15 @@ module.exports = {
                     return;
                 }
                 
-                // Supprimer l'ancien message principal
-                await mainMessage.delete();
+                // Vérifier si le message principal existe encore avant de le supprimer
+                try {
+                    await mainMessage.fetch();
+                    // Supprimer l'ancien message principal
+                    await mainMessage.delete();
+                } catch (fetchError) {
+                    // Le message n'existe plus, on continue sans le supprimer
+                    console.log('Le message principal a déjà été supprimé');
+                }
                 
                 // Recréer le message principal en bas du canal
                 const view = new PokemonControlView();
