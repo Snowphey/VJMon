@@ -54,8 +54,9 @@ module.exports = {
                 } catch (fetchError) {
                     // Le message n'existe plus, on continue sans le supprimer
                     console.log('Le message principal a déjà été supprimé');
+                    return; // On arrête la recréation si le message principal n'existe plus
                 }
-                
+
                 // Recréer le message principal en bas du canal
                 const view = new PokemonControlView();
                 const screenshotPath = await view.captureDesmume();

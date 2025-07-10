@@ -5,81 +5,105 @@ const { execSync } = require('child_process');
 
 let captureCounter = 0;
 
+// Buffer et verrouaux
+let commandBuffer = [];
+let isBusy = false;
+
 class PokemonControlView {
     constructor(interaction = null) {
         this.interaction = interaction;
     }
 
-    async sendSingleCommand(key) {
+    async handleCommand(interaction, key, repeat = 1) {
+        const startGlobal = Date.now();
+        //console.log(`[DEBUG] Nouvelle commande: key=${key}, repeat=${repeat}, isBusy=${isBusy}, bufferLen=${commandBuffer.length}`);
+        // Bufferisation si déjà en cours
+        if (isBusy) {
+            commandBuffer.push({ interaction, key, repeat });
+            //console.log(`[DEBUG] Commande ajoutée au buffer. Buffer now:`, commandBuffer.map(c => c.key));
+            return;
+        }
+        isBusy = true;
         try {
+            // Indiquer à Discord que l'interaction est en cours de traitement
+            await interaction.deferUpdate();
             // Trouve la fenêtre DeSmuME-CLI
             const windowId = await this.getDesmumeWindowId();
             if (!windowId) {
-                throw new Error('Fenêtre DeSmuME non trouvée');
+                console.error('[DEBUG] Fenêtre DeSmuME non trouvée');
+                return;
             }
-            
-            // Envoie la touche via xdotool
             const keyMap = this.getKeyMapping(key);
-            if (keyMap) {
-                execSync(`DISPLAY=:99 xdotool windowfocus ${windowId}`);
-                execSync(`DISPLAY=:99 xdotool key --window ${windowId} ${keyMap}`);
-                await this.sleep(100); // Petit délai pour éviter les inputs trop rapides
+            if (!keyMap) {
+                console.error('[DEBUG] Touche non reconnue:', key);
+                return;
             }
-        } catch (error) {
-            console.error('Erreur lors de l\'envoi de la commande:', error.message);
-        }
-    }
-
-    async handleCommand(interaction, key, repeat = 1) {
-        // Indiquer à Discord que l'interaction est en cours de traitement
-        await interaction.deferUpdate();
-        
-        // Trouve la fenêtre DeSmuME-CLI
-        const windowId = await this.getDesmumeWindowId();
-        if (!windowId) {
-            console.error('Fenêtre DeSmuME non trouvée');
-            return;
-        }
-        
-        const keyMap = this.getKeyMapping(key);
-        if (!keyMap) {
-            console.error('Touche non reconnue:', key);
-            return;
-        }
-        
-        for (let i = 0; i < repeat; i++) {
-            try {
-                execSync(`DISPLAY=:99 xdotool windowfocus ${windowId}`);
-                execSync(`DISPLAY=:99 xdotool key --window ${windowId} ${keyMap}`);
-                await this.sleep(500); // Délai entre les répétitions
-            } catch (error) {
-                console.error('Erreur lors de l\'envoi de la commande:', error.message);
+            // Détection du délai spécial pour la touche a_x2
+            let interInputDelay = 150;
+            if (typeof key === 'string' && key.toLowerCase() === 'a_x2') {
+                interInputDelay = 500;
             }
-        }
-
-        const screenshotPath = await this.captureDesmume();
-        if (screenshotPath) {
-            // Récupérer le message principal partagé
-            const mainMessage = global.mainMessage;
-            
-            if (mainMessage) {
+            for (let i = 0; i < repeat; i++) {
+                const t0 = Date.now();
                 try {
-                    const attachment = new AttachmentBuilder(screenshotPath);
-                    const components = this.createComponents();
-                    
-                    await mainMessage.edit({
-                        content: 'Capture du jeu :',
-                        files: [attachment],
-                        components: components
-                    });
+                    const tFocus0 = Date.now();
+                    execSync(`DISPLAY=:99 xdotool windowfocus ${windowId}`);
+                    const tFocus1 = Date.now();
+                    // Log windowId et nom de la fenêtre
+                    const windowName = execSync(`DISPLAY=:99 xdotool getwindowname ${windowId}`, { encoding: 'utf-8' }).trim();
+                    //console.log(`[DEBUG] windowfocus fait en ${tFocus1-tFocus0}ms sur windowId=${windowId} (${windowName})`);
+                    const tKey0 = Date.now();
+                    execSync(`DISPLAY=:99 xdotool keydown --window ${windowId} ${keyMap}`);
+                    await this.sleep(150);
+                    execSync(`DISPLAY=:99 xdotool keyup --window ${windowId} ${keyMap}`);
+                    const tKey1 = Date.now();
+                    //console.log(`[DEBUG] keydown/up '${key}' envoyé en ${tKey1-tKey0}ms`);
+                    const t1 = Date.now();
+                    //console.log(`[DEBUG] Input ${key} envoyé (${i+1}/${repeat}) en ${t1-t0}ms`);
                 } catch (error) {
-                    console.error('Erreur lors de la mise à jour du message principal:', error);
+                    console.error('[DEBUG] Erreur lors de l\'envoi de la commande:', error.message);
+                }
+                // Ajout d'un délai entre deux inputs si repeat > 1
+                if (i < repeat - 1) {
+                    await this.sleep(interInputDelay); // délai dynamique entre deux inputs
+                }
+            }
+            const t2 = Date.now();
+            const screenshotPath = await this.captureDesmume();
+            const t3 = Date.now();
+            //console.log(`[DEBUG] Screenshot pris en ${t3-t2}ms`);
+            if (screenshotPath) {
+                // Récupérer le message principal partagé
+                const mainMessage = global.mainMessage;
+                
+                if (mainMessage) {
+                    try {
+                        const attachment = new AttachmentBuilder(screenshotPath);
+                        const components = this.createComponents();
+                        
+                        await mainMessage.edit({
+                            content: 'Capture du jeu :',
+                            files: [attachment],
+                            components: components
+                        });
+                    } catch (error) {
+                        console.error('Erreur lors de la mise à jour du message principal:', error);
+                    }
+                } else {
+                    console.error('Message principal non trouvé - aucune session active');
                 }
             } else {
-                console.error('Message principal non trouvé - aucune session active');
+                console.error('[DEBUG] Impossible de capturer DeSmuME');
             }
-        } else {
-            console.error('Impossible de capturer DeSmuME');
+        } finally {
+            isBusy = false;
+            const endGlobal = Date.now();
+            //console.log(`[DEBUG] Commande ${key} terminée en ${endGlobal-startGlobal}ms. Buffer restant:`, commandBuffer.map(c => c.key));
+            // Traiter la prochaine commande du buffer si présente
+            if (commandBuffer.length > 0) {
+                const next = commandBuffer.shift();
+                this.handleCommand(next.interaction, next.key, next.repeat);
+            }
         }
     }
 
